@@ -15,7 +15,7 @@ and all rotated to look jumbled, then clicking an album plays it. The selection 
 CSS, JS and HTML pretty much totally created by Claud.ai</summary>
     <description lang="en_GB">Just play whole albums.</description>
     <platform>all</platform>
-    <source>https://github.com/ptaffs/albumview</source>
+    <source>https://github.com/ptaffs/webinterface.albumscatter</source>
     <forum>http://forum.xbmc.org/</forum>
     <assets>
       <icon>icon.png</icon>
