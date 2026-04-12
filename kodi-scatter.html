@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<!--
+  Kodi Music Browser
+  Written with Claude (Anthropic) -- https://claude.ai
+  Released under MIT License -- whatever you like with it.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>KODI — Record Pile</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0e0c0a;
+      --accent: #e8ff47;
+      --accent2: #ff4757;
+      --text: #e8e8e0;
+      --muted: #55524a;
+      --surface: #1a1814;
+      --border: #2a2820;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      overflow: hidden;
+    }
+
+    /* Subtle wood-grain texture background */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        repeating-linear-gradient(
+          92deg,
+          transparent 0px, transparent 3px,
+          rgba(255,255,255,0.012) 3px, rgba(255,255,255,0.012) 4px
+        ),
+        repeating-linear-gradient(
+          180deg,
+          transparent 0px, transparent 8px,
+          rgba(0,0,0,0.06) 8px, rgba(0,0,0,0.06) 9px
+        );
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── GENRE SIDEBAR ── */
+    #sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0;
+      width: 180px;
+      background: rgba(14,12,10,0.95);
+      border-right: 1px solid var(--border);
+      z-index: 200;
+      display: flex; flex-direction: column;
+      padding: 1.5rem 0;
+      backdrop-filter: blur(8px);
+    }
+
+    .sidebar-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.4rem; letter-spacing: 0.1em;
+      color: var(--accent); padding: 0 1.25rem 1rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.75rem;
+    }
+
+    .genre-list { overflow-y: auto; flex: 1; }
+    .genre-list::-webkit-scrollbar { width: 3px; }
+    .genre-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .genre-btn {
+      display: block; width: 100%;
+      text-align: left;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.68rem; letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.55rem 1.25rem;
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; transition: all 0.15s;
+      border-left: 2px solid transparent;
+    }
+    .genre-btn:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+    .genre-btn.active { color: var(--accent); border-left-color: var(--accent); background: rgba(232,255,71,0.05); }
+
+    .genre-count {
+      float: right; font-size: 0.6rem;
+      color: var(--muted); margin-top: 1px;
+    }
+
+    .sidebar-footer {
+      padding: 1rem 1.25rem 0;
+      border-top: 1px solid var(--border);
+      font-size: 0.6rem; color: var(--muted);
+      letter-spacing: 0.1em;
+    }
+
+    /* ── SCATTER CANVAS ── */
+    #canvas {
+      position: fixed;
+      left: 180px; top: 0; right: 0; bottom: 0;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    /* ── ALBUM COVERS ── */
+    .cover {
+      position: absolute;
+      width: 160px; height: 160px;
+      cursor: pointer;
+      transform-origin: center center;
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1),
+                  box-shadow 0.25s ease,
+                  z-index 0s;
+      will-change: transform;
+      user-select: none;
+    }
+
+    .cover:hover {
+      z-index: 500 !important;
+    }
+
+    .cover-inner {
+      width: 100%; height: 100%;
+      position: relative;
+      box-shadow:
+        2px 2px 0 rgba(0,0,0,0.4),
+        4px 4px 8px rgba(0,0,0,0.5),
+        8px 8px 24px rgba(0,0,0,0.4);
+      transition: box-shadow 0.25s ease;
+    }
+
+    .cover:hover .cover-inner {
+      box-shadow:
+        4px 4px 0 rgba(0,0,0,0.5),
+        8px 8px 20px rgba(0,0,0,0.6),
+        20px 20px 60px rgba(0,0,0,0.5);
+    }
+
+    .cover img {
+      width: 100%; height: 100%;
+      object-fit: cover; display: block;
+      pointer-events: none;
+      -webkit-user-drag: none;
+    }
+
+    .cover-placeholder {
+      width: 100%; height: 100%;
+      background: linear-gradient(135deg, #1e1c18, #2a2820);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 3rem; color: var(--border);
+    }
+
+    /* Hover: lift and straighten slightly */
+    .cover:hover {
+      transform: var(--base-transform) scale(1.18) rotate(var(--hover-nudge)) !important;
+    }
+
+    /* Playing highlight */
+    .cover.playing {
+      z-index: 490 !important;
+    }
+    .cover.playing .cover-inner::after {
+      content: '';
+      position: absolute; inset: 0;
+      border: 3px solid var(--accent);
+      pointer-events: none;
+      animation: pulseGlow 2s ease-in-out infinite;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: inset 0 0 0 rgba(232,255,71,0); }
+      50%       { box-shadow: inset 0 0 20px rgba(232,255,71,0.2); }
+    }
+
+    /* ── TOOLTIP on hover ── */
+    .cover-tip {
+      position: absolute;
+      bottom: calc(100% + 8px); left: 50%;
+      transform: translateX(-50%);
+      background: rgba(14,12,10,0.96);
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.7rem;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 10;
+      max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cover-tip-title { font-family: 'Bebas Neue', sans-serif; font-size: 0.95rem; letter-spacing: 0.05em; }
+    .cover-tip-artist { font-size: 0.6rem; color: var(--muted); font-style: italic; }
+    .cover:hover .cover-tip { opacity: 1; }
+
+    /* ── NOW PLAYING BAR ── */
+    #nowPlaying {
+      position: fixed; bottom: 0; left: 180px; right: 0;
+      background: rgba(14,12,10,0.97);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 1.25rem;
+      padding: 0.75rem 2rem;
+      z-index: 300;
+      transform: translateY(100%);
+      transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+      min-height: 68px;
+      backdrop-filter: blur(12px);
+    }
+    #nowPlaying.visible { transform: translateY(0); }
+
+    #npArt { width: 44px; height: 44px; object-fit: cover; flex-shrink: 0; border: 1px solid var(--border); }
+    #npArtPlaceholder {
+      width: 44px; height: 44px; flex-shrink: 0;
+      background: var(--surface); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 1rem;
+    }
+    .np-info { flex: 1; min-width: 0; }
+    .np-label { font-size: 0.55rem; color: var(--accent); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.15rem; }
+    .np-track { font-family: 'Bebas Neue', sans-serif; font-size: 1.05rem; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .np-artist { font-size: 0.65rem; color: var(--muted); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .np-progress-wrap { flex: 1; max-width: 260px; display: flex; flex-direction: column; gap: 0.3rem; }
+    .np-time { display: flex; justify-content: space-between; font-size: 0.58rem; color: var(--muted); }
+    .progress-track { height: 2px; background: var(--border); }
+    .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 1s linear; }
+
+    .np-controls { display: flex; align-items: center; gap: 0.4rem; }
+    .ctrl-btn {
+      background: none; border: 1px solid var(--border); color: var(--text);
+      font-size: 0.8rem; width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .ctrl-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .ctrl-btn.pp { width: 36px; height: 36px; font-size: 0.95rem; border-color: var(--accent); color: var(--accent); }
+    .ctrl-btn.pp:hover { background: var(--accent); color: #000; }
+
+    .np-vol { display: flex; align-items: center; gap: 0.4rem; }
+    .vol-icon { font-size: 0.75rem; color: var(--muted); cursor: pointer; }
+    input[type=range] {
+      -webkit-appearance: none; appearance: none;
+      width: 65px; height: 2px; background: var(--border); outline: none; cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 9px; height: 9px;
+      border-radius: 50%; background: var(--accent);
+    }
+
+    /* ── LOADING / ERROR ── */
+    #overlay {
+      position: fixed; inset: 0; left: 180px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 1rem; z-index: 400;
+      background: var(--bg);
+      transition: opacity 0.5s;
+    }
+    #overlay.hidden { opacity: 0; pointer-events: none; }
+    .spinner { width: 36px; height: 36px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .overlay-msg { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.15em; }
+    .overlay-title { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; color: var(--text); opacity: 0.3; letter-spacing: 0.1em; }
+
+    /* Reshuffle button */
+    #btnReshuffle {
+      position: fixed; right: 1.5rem; top: 1.25rem;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 0.45rem 0.9rem;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); cursor: pointer; z-index: 200;
+      transition: all 0.15s;
+    }
+    #btnReshuffle:hover { border-color: var(--accent); color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<!-- GENRE SIDEBAR -->
+<div id="sidebar">
+  <div class="sidebar-title">Genres</div>
+  <div class="genre-list" id="genreList">
+    <div style="padding:1rem;font-size:0.65rem;color:var(--muted)">Loading…</div>
+  </div>
+  <div class="sidebar-footer">KODI-SCATTER</div>
+</div>
+
+<!-- SCATTER CANVAS -->
+<div id="canvas"></div>
+
+<!-- RESHUFFLE -->
+<button id="btnReshuffle" onclick="reshuffle()">⇌ Reshuffle</button>
+
+<!-- OVERLAY -->
+<div id="overlay">
+  <div class="spinner"></div>
+  <div class="overlay-msg">Connecting to Kodi…</div>
+</div>
+
+<!-- NOW PLAYING -->
+<div id="nowPlaying">
+  <div id="npArtPlaceholder">♪</div>
+  <img id="npArt" style="display:none" alt=""/>
+  <div class="np-info">
+    <div class="np-label">Now Playing</div>
+    <div class="np-track"  id="npTrack">—</div>
+    <div class="np-artist" id="npArtist">—</div>
+  </div>
+  <div class="np-progress-wrap">
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="np-time"><span id="npElapsed">0:00</span><span id="npDuration">0:00</span></div>
+  </div>
+  <div class="np-controls">
+    <button class="ctrl-btn"    onclick="kodiAction('prev')">⏮</button>
+    <button class="ctrl-btn pp" id="ppBtn" onclick="kodiAction('playpause')">⏸</button>
+    <button class="ctrl-btn"    onclick="kodiAction('next')">⏭</button>
+    <button class="ctrl-btn"    onclick="kodiAction('stop')">⏹</button>
+  </div>
+  <div class="np-vol">
+    <span class="vol-icon" id="volIcon" onclick="kodiAction('mute')">🔊</span>
+    <input type="range" id="volSlider" min="0" max="100" value="80" oninput="setVolume(this.value)"/>
+  </div>
+</div>
+
+<script>
+  // ── RPC ────────────────────────────────────────────────────────
+  async function rpc(method, params, id) {
+    const res = await fetch('/jsonrpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: method || '', params: params || {}, id: id || 1 })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    if (d.error) throw new Error(d.error.message);
+    return d.result;
+  }
+
+  function imgUrl(thumb) {
+    return thumb ? '/image/' + encodeURIComponent(thumb) : null;
+  }
+
+  // ── State ──────────────────────────────────────────────────────
+  let allAlbums      = [];   // full library (no compilations)
+  let genres         = [];   // sorted genre list
+  let currentGenre   = null; // null = All
+  let scattered      = [];   // currently displayed albums
+  let playingAlbumId = null;
+  let playerId       = null;
+  let pollTimer      = null;
+
+  // ── Seeded RNG for reproducible scatter per genre ──────────────
+  function seededRand(seed) {
+    // simple mulberry32
+    return function() {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────
+  window.addEventListener('load', async function() {
+    try {
+      const result = await rpc('AudioLibrary.GetAlbums', {
+        properties: ['artist','year','genre','thumbnail','compilation'],
+        limits: { start: 0, end: 99999 },
+        filter: { field: 'compilation', operator: 'is', value: 'false' }
+      });
+
+      allAlbums = (result && result.albums) || [];
+      allAlbums.forEach(function(a) { a.artUrl = imgUrl(a.thumbnail); });
+
+      buildGenreList();
+      scatter(null);  // start with All
+      startPolling();
+
+      document.getElementById('overlay').classList.add('hidden');
+    } catch(e) {
+      document.querySelector('.overlay-msg').textContent = 'Connection failed: ' + e.message;
+      document.querySelector('.spinner').style.display = 'none';
+    }
+  });
+
+  // ── Genres ─────────────────────────────────────────────────────
+  function buildGenreList() {
+    var counts  = {};
+    var artists = {};  // genre -> Set of artists
+	
+    allAlbums.forEach(function(a) {
+    var gs = a.genre ? (Array.isArray(a.genre) ? a.genre : [a.genre]) : ['Untagged'];
+    var artist = Array.isArray(a.artist) ? a.artist[0] : a.artist;
+    gs.forEach(function(g) {
+      counts[g] = (counts[g] || 0) + 1;
+      if (!artists[g]) artists[g] = {};
+        artists[g][artist] = true;
+      });
+    });
+	
+    // Then filter:
+    var genres = Object.keys(counts).filter(function(g) {
+      return Object.keys(artists[g]).length > 1;  // more than one artist
+      }).sort(function(a,b){ return a.localeCompare(b); });
+	
+    var html = '<button class="genre-btn active" onclick="selectGenre(null, this)">' +
+               'All <span class="genre-count">' + allAlbums.length + '</span></button>';
+    genres.forEach(function(g) {
+      html += '<button class="genre-btn" onclick="selectGenre(\'' +
+              escJs(g) + '\', this)">' +
+              escHtml(g) + ' <span class="genre-count">' + counts[g] + '</span></button>';
+    });
+    document.getElementById('genreList').innerHTML = html;
+  }
+
+  function selectGenre(genre, btn) {
+    currentGenre = genre;
+    document.querySelectorAll('.genre-btn').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    scatter(genre);
+  }
+
+  // ── Scatter ────────────────────────────────────────────────────
+//  const MAX_COVERS = 100;
+
+  function scatter(genre) {
+    var pool = genre
+      ? allAlbums.filter(function(a){ return (a.genre || []).indexOf(genre) !== -1; })
+      : allAlbums;
+
+    // Shuffle and cap at MAX_COVERS using seeded rand based on genre name
+    var seed = 0;
+    var key = genre || 'all';
+    for (var i = 0; i < key.length; i++) seed += key.charCodeAt(i);
+    var rand = seededRand(seed + Date.now()); // add Date.now so reshuffle works
+
+    var shuffled = pool.slice().sort(function(){ return rand() - 0.5; });
+    var canvas = document.getElementById('canvas');
+    var max = Math.round((canvas.offsetWidth * canvas.offsetHeight) / (155 * 155) * 2.5);
+
+    scattered = shuffled.slice(0, max);
+
+    renderScatter();
+  }
+
+  function reshuffle() {
+    // re-scatter with fresh randomness
+    var pool = currentGenre
+      ? allAlbums.filter(function(a){ return (a.genre || []).indexOf(currentGenre) !== -1; })
+      : allAlbums;
+    var shuffled = pool.slice().sort(function(){ return Math.random() - 0.5; });
+    scattered = shuffled.slice(0, MAX_COVERS);
+    renderScatter();
+  }
+
+  function renderScatter() {
+    var canvas  = document.getElementById('canvas');
+    var W = canvas.offsetWidth;
+    var H = canvas.offsetHeight;
+
+    // Clear
+    canvas.innerHTML = '';
+
+    // Distribute albums across a grid of zones with randomness within each zone
+    // This ensures coverage without full clustering
+    var n = scattered.length;
+    var cols = Math.ceil(Math.sqrt(n * (W / H)));
+    var rows = Math.ceil(n / cols);
+    var cellW = W / cols;
+    var cellH = H / rows;
+
+    // Shuffle zone order so z-index feels natural
+    var zones = [];
+    for (var i = 0; i < n; i++) zones.push(i);
+    zones.sort(function(){ return Math.random() - 0.5; });
+
+    scattered.forEach(function(album, idx) {
+      var zone  = zones[idx];
+      var col   = zone % cols;
+      var row   = Math.floor(zone / cols);
+
+      // Position within zone — cover can overflow zone edges for overlap
+      var cx = col * cellW + cellW * 0.5;
+      var cy = row * cellH + cellH * 0.5;
+      var jitterX = (Math.random() - 0.5) * cellW * 1.1;
+      var jitterY = (Math.random() - 0.5) * cellH * 1.1;
+      var x = Math.max(20, Math.min(W - 20, cx + jitterX));
+      var y = Math.max(20, Math.min(H - 20, cy + jitterY));
+
+      // Rotation: mostly small, occasionally wild
+      var rot = (Math.random() - 0.5) * 28;
+      if (Math.random() < 0.12) rot = (Math.random() - 0.5) * 55;
+
+      // Hover nudge: bring back toward 0 slightly
+      var nudge = rot * -0.35;
+
+      // Z-index: random layering
+      var z = 10 + Math.floor(Math.random() * 80);
+
+      var isPlaying = album.albumid === playingAlbumId;
+
+      var div = document.createElement('div');
+      div.className = 'cover' + (isPlaying ? ' playing' : '');
+      div.dataset.id = album.albumid;
+      div.style.cssText =
+        'left:' + (x - 80) + 'px;' +
+        'top:'  + (y - 80) + 'px;' +
+        'z-index:' + z + ';' +
+        '--base-transform: rotate(' + rot + 'deg);' +
+        '--hover-nudge: ' + nudge + 'deg;' +
+        'transform: rotate(' + rot + 'deg);';
+
+      var artist = (album.artist || []).join(', ') || '—';
+
+      div.innerHTML =
+        '<div class="cover-inner">' +
+          (album.artUrl
+            ? '<img src="' + escHtml(album.artUrl) + '" alt="" loading="lazy"' +
+              ' onload="this.previousElementSibling && (this.previousElementSibling.style.display=\'none\')"' +
+              ' onerror="this.style.display=\'none\'">'
+            : '<div class="cover-placeholder">♪</div>') +
+        '</div>' +
+        '<div class="cover-tip">' +
+          '<div class="cover-tip-title">' + escHtml(album.label) + '</div>' +
+          '<div class="cover-tip-artist">' + escHtml(artist) + '</div>' +
+        '</div>';
+
+      div.addEventListener('click', function() {
+        playAlbum(album.albumid);
+      });
+
+      // On hover, bring to front temporarily
+      div.addEventListener('mouseenter', function() {
+        if (!div.classList.contains('playing')) div.style.zIndex = 500;
+      });
+      div.addEventListener('mouseleave', function() {
+        if (!div.classList.contains('playing')) div.style.zIndex = z;
+      });
+
+      canvas.appendChild(div);
+    });
+  }
+
+  // ── Playback ───────────────────────────────────────────────────
+  async function playAlbum(albumId) {
+    try {
+      await rpc('Player.Open', { item: { albumid: albumId } }, 2);
+      setTimeout(pollNowPlaying, 700);
+    } catch(e) { console.error(e); }
+  }
+
+  async function kodiAction(action) {
+    try {
+      if (action === 'playpause' && playerId !== null)
+        await rpc('Player.PlayPause', { playerid: playerId }, 3);
+      else if (action === 'stop' && playerId !== null)
+        await rpc('Player.Stop', { playerid: playerId }, 3);
+      else if (action === 'next' && playerId !== null)
+        await rpc('Player.GoTo', { playerid: playerId, to: 'next' }, 3);
+      else if (action === 'prev' && playerId !== null)
+        await rpc('Player.GoTo', { playerid: playerId, to: 'previous' }, 3);
+      else if (action === 'mute') {
+        var r = await rpc('Application.SetMute', { mute: 'toggle' }, 3);
+        document.getElementById('volIcon').textContent = r.muted ? '🔇' : '🔊';
+      }
+      setTimeout(pollNowPlaying, 300);
+    } catch(e) {}
+  }
+
+  async function setVolume(v) {
+    try { await rpc('Application.SetVolume', { volume: parseInt(v) }, 4); } catch(e) {}
+  }
+
+  // ── Now Playing ────────────────────────────────────────────────
+  function startPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollNowPlaying();
+    pollTimer = setInterval(pollNowPlaying, 3000);
+  }
+
+  async function pollNowPlaying() {
+    try {
+      var players = await rpc('Player.GetActivePlayers', {}, 10);
+      var audio = null;
+      (players || []).forEach(function(p){ if (p.type === 'audio') audio = p; });
+      if (!audio) { hideNP(); return; }
+      playerId = audio.playerid;
+
+      var item  = await rpc('Player.GetItem', { playerid: playerId,
+        properties: ['title','artist','album','albumid','thumbnail'] }, 11);
+      var props = await rpc('Player.GetProperties', { playerid: playerId,
+        properties: ['time','totaltime','speed','percentage'] }, 12);
+      var app   = await rpc('Application.GetProperties',
+        { properties: ['volume','muted'] }, 13);
+
+      showNP(item.item, props, app);
+    } catch(e) { hideNP(); }
+  }
+
+  function showNP(item, props, app) {
+    document.getElementById('nowPlaying').classList.add('visible');
+    document.getElementById('npTrack').textContent  = item.title || item.label || '—';
+    document.getElementById('npArtist').textContent =
+      (item.artist || []).join(', ') || item.album || '—';
+
+    var artEl = document.getElementById('npArt');
+    var phEl  = document.getElementById('npArtPlaceholder');
+    if (item.thumbnail) {
+      artEl.src = imgUrl(item.thumbnail);
+      artEl.style.display = 'block'; phEl.style.display = 'none';
+    } else {
+      artEl.style.display = 'none'; phEl.style.display = 'flex';
+    }
+
+    document.getElementById('progressFill').style.width = (props.percentage || 0) + '%';
+    document.getElementById('npElapsed').textContent = fmtTime(props.time);
+    document.getElementById('npDuration').textContent = fmtTime(props.totaltime);
+    document.getElementById('ppBtn').textContent = props.speed === 0 ? '▶' : '⏸';
+
+    if (app) {
+      document.getElementById('volSlider').value = app.volume || 0;
+      document.getElementById('volIcon').textContent = app.muted ? '🔇' : '🔊';
+    }
+
+    // Update playing card highlight
+    var newId = item.albumid || null;
+    if (newId !== playingAlbumId) {
+      playingAlbumId = newId;
+      document.querySelectorAll('.cover').forEach(function(c) {
+        c.classList.toggle('playing', parseInt(c.dataset.id) === newId);
+      });
+    }
+  }
+
+  function hideNP() {
+    document.getElementById('nowPlaying').classList.remove('visible');
+    playerId = null;
+    if (playingAlbumId !== null) {
+      playingAlbumId = null;
+      document.querySelectorAll('.cover.playing').forEach(function(c){
+        c.classList.remove('playing');
+      });
+    }
+  }
+
+  function fmtTime(t) {
+    if (!t) return '0:00';
+    var h = t.hours||0, m = t.minutes||0, s = t.seconds||0;
+    return h > 0 ? h+':'+p2(m)+':'+p2(s) : m+':'+p2(s);
+  }
+  function p2(n) { return String(n).padStart(2,'0'); }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function escJs(s) {
+    return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  }
+
+  // Re-scatter on window resize
+  var resizeTimer;
+  window.addEventListener('resize', function() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderScatter, 200);
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon
+  id="webinterface.albumscatter"
+  version="0.1"
+  name="Album Viewer"
+  provider-name="ptaffs@gmail.com">
+  <requires>
+    <import addon="xbmc.json" version="6.0.0" />
+  </requires>
+  <extension point="xbmc.webinterface"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">This is an interface where a selection of about 100 album covers are distributed
+as though strewn across the window, overlapping and some not visible behind others,
+and all rotated to look jumbled, then clicking an album plays it. The selection could be based on genre.
+CSS, JS and HTML pretty much totally created by Claud.ai</summary>
+    <description lang="en_GB">Just play whole albums.</description>
+    <platform>all</platform>
+    <source>https://github.com/ptaffs/albumview</source>
+    <forum>http://forum.xbmc.org/</forum>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+
